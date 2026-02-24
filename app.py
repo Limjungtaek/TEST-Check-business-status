@@ -1,4 +1,11 @@
 import streamlit as st
+
+# 모든 로직 시작 전에 작성
+st.error("🛑 본 서비스는 관리자에 의해 종료되었습니다.")
+st.info("문의 사항은 관리자 이메일(admin@example.com)로 연락 바랍니다.")
+st.stop()  # 이 아래의 모든 코드는 실행되지 않습니다.
+
+import streamlit as st
 import requests
 import json
 import time
@@ -94,3 +101,4 @@ if uploaded_file:
                     file_name="abnormal_biz_list.csv",
                     mime="text/csv"
                 )
+
