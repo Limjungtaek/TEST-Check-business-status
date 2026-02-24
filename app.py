@@ -61,7 +61,7 @@ with st.sidebar:
     st.header("⚙️ 서비스 정보")
     st.info(f"📅 만료 예정일: {EXPIRY_DATE}")
     st.write("---")
-    st.caption("본 프로그램은 개인 자산으로 제작되었으며, API 키 보안을 위해 만료일 이후에는 작동이 중지됩니다.")
+    st.caption("본 프로그램은 개인 자산으로 제작되었으며, 보안 및 API 유지비용 문제로 만료일 이후에는 작동이 중지됩니다.")
 
 # 메인 화면
 st.title("🏢 사업자 등록 상태 일괄 조회")
@@ -113,24 +113,26 @@ if uploaded_file:
 
             # 3. 상세 결과 표 출력
             if len(abnormal) > 0:
-                st.warning(f"⚠️ 확인이 필요한 사업자가 {len(abnormal)}건 있습니다.")
+                st.warning(f"⚠️ 확인이 필요한 사업자가 {len(abnormal)}건 발견되었습니다.")
                 
                 # 데이터프레임 변환 및 인덱스 설정 (1부터 시작)
                 df = pd.DataFrame(abnormal)
                 df.index = df.index + 1  # 0부터 시작하는 인덱스를 1부터 시작하게 변경
-                df.index.name = '번호'    # 인덱스 열의 이름을 '번호'로 설정
+                df.index.name = '번호'    # 인덱스 열의 제목을 '번호'로 명시
                 
-                # 표 출력 (번호 열이 제목과 함께 1부터 나옴)
+                # 화면 출력용 데이터프레임
                 st.dataframe(df, use_container_width=True)
                 
-                # 다운로드 버튼
-                csv = df.to_csv(index=True, encoding='utf-8-sig') # 번호 포함 저장
+                # 결과 다운로드 (CSV) - utf-8-sig 인코딩으로 엑셀 한글 깨짐 방지
+                # index=True를 사용해 '번호' 열도 함께 저장합니다.
+                csv_data = df.to_csv(index=True, encoding='utf-8-sig')
+                
                 st.download_button(
                     label="📥 비정상 사업자 리스트 다운로드 (CSV)",
-                    data=csv,
-                    file_name=f"biz_check_{datetime.date.today()}.csv",
+                    data=csv_data,
+                    file_name=f"biz_check_result_{datetime.date.today()}.csv",
                     mime="text/csv"
                 )
             else:
                 st.balloons()
-                st.success("✅ 모든 사업자가 '계속사업자' 상태입니다. 문제가 없습니다!")
+                st.success("✅ 조회 결과, 모든 사업자가 '계속사업자' 상태입니다!")
