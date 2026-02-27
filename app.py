@@ -6,6 +6,14 @@ import datetime
 import pandas as pd
 from io import BytesIO
 
+# --- [추가 기능: 앱 전체 중지 스위치] ---
+# 필요할 때 아래 True를 False로 바꾸거나, UI에서 체크박스를 통해 제어할 수 있습니다.
+APP_DISABLED = False  # 이 값을 True로 변경하면 앱이 즉시 중지됩니다.
+
+if APP_DISABLED:
+    st.error("🚫 현재 시스템 점검 중으로 서비스를 일시 중단합니다.")
+    st.stop()
+
 # --- [설정 1: 만료 날짜] ---
 EXPIRY_DATE = datetime.date(2026, 12, 31)
 
@@ -47,11 +55,14 @@ def check_biz_status(biz_nums):
     return all_results
 
 # --- [UI 설정] ---
-st.set_page_config(page_title="재고/정산 도우미", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="사업자상태 조회_임정택", page_icon="🏢", layout="wide")
 
 with st.sidebar:
     st.header("⚙️ 서비스 정보")
     st.info(f"📅 만료 예정일: {EXPIRY_DATE}")
+    # 관리용 중지 스위치 (UI에서 직접 끄고 싶을 경우 사용)
+    # stop_app = st.checkbox("관리자 모드: 앱 즉시 중지", value=False)
+    # if stop_app: st.stop()
 
 st.title("🏢 사업자 등록 상태 일괄 조회")
 check_license()
@@ -94,11 +105,31 @@ if uploaded_file:
                 df.index.name = '번호'
                 st.dataframe(df, use_container_width=True)
                 
-                # --- [엑셀 파일 생성 로직] ---
+                # --- [엑셀 파일 생성 및 서식 지정] ---
                 output = BytesIO()
-                # xlsxwriter 엔진을 사용하여 엑셀 파일 생성
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     df.to_excel(writer, index=True, sheet_name='조회결과')
+                    
+                    workbook  = writer.book
+                    worksheet = writer.sheets['조회결과']
+                    
+                    # 1. 모든 셀에 테두리를 적용할 포맷 생성
+                    border_format = workbook.add_format({
+                        'border': 1,       # 테두리 두께
+                        'align': 'left',   # 정렬
+                        'valign': 'vcenter'
+                    })
+                    
+                    # 2. 열 너비 자동 조절 및 테두리 적용
+                    # Index(번호) 포함 모든 열에 대해 루프
+                    for i, col in enumerate(df.columns):
+                        # 열 이름의 길이나 데이터 중 가장 긴 길이를 계산
+                        column_len = max(df[col].astype(str).map(len).max(), len(col)) + 5
+                        # 데이터 영역에 테두리 적용 (set_column 사용)
+                        worksheet.set_column(i + 1, i + 1, column_len, border_format)
+                    
+                    # 인덱스(A열) 처리
+                    worksheet.set_column(0, 0, 10, border_format)
                 
                 processed_data = output.getvalue()
                 
