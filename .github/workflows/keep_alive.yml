@@ -1,0 +1,16 @@
+name: Keep Streamlit App Alive
+
+on:
+  schedule:
+    # 한국 시간 기준(KST) 매일 오전 9시에 실행 (UTC 00:00)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 버튼을 눌러 수동으로 즉시 실행 가능하게 함
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send a request to the app
+        # 본인의 실제 스트림릿 주소(https://...streamlit.app)로 수정하세요.
+        # 앱이 여러 개라면 아래 run: | 형식을 사용하여 여러 줄을 넣을 수 있습니다.
+        run: curl -I https://test-check-business-status-j6lnsjf4ggduwysxf4pqsu.streamlit.app/
