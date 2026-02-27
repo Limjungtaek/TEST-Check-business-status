@@ -6,13 +6,23 @@ import datetime
 import pandas as pd
 from io import BytesIO
 
-# --- [추가 기능: 앱 전체 중지 스위치] ---
-# 필요할 때 아래 True를 False로 바꾸거나, UI에서 체크박스를 통해 제어할 수 있습니다.
-APP_DISABLED = False  # 이 값을 True로 변경하면 앱이 즉시 중지됩니다.
+# ==========================================
+# 1. 앱 관리 및 시스템 설정
+# ==========================================
+
+# [기능] 앱 전체 중지 스위치 (True로 변경 시 앱 작동 중지)
+APP_DISABLED = False 
 
 if APP_DISABLED:
     st.error("🚫 현재 시스템 점검 중으로 서비스를 일시 중단합니다.")
     st.stop()
+
+# [기능] 브라우저 탭 이름 및 레이아웃 설정
+st.set_page_config(
+    page_title="사업자 등록 상태 조회 시스템", # 브라우저 탭에 표시될 이름
+    page_icon="🏢", 
+    layout="wide"
+)
 
 # --- [설정 1: 만료 날짜] ---
 EXPIRY_DATE = datetime.date(2026, 12, 31)
@@ -54,24 +64,32 @@ def check_biz_status(biz_nums):
         time.sleep(0.2)
     return all_results
 
-# --- [UI 설정] ---
-st.set_page_config(page_title="사업자상태 조회_임정택", page_icon="🏢", layout="wide")
+# ==========================================
+# 2. 메인 UI 화면
+# ==========================================
 
 with st.sidebar:
     st.header("⚙️ 서비스 정보")
     st.info(f"📅 만료 예정일: {EXPIRY_DATE}")
-    # 관리용 중지 스위치 (UI에서 직접 끄고 싶을 경우 사용)
-    # stop_app = st.checkbox("관리자 모드: 앱 즉시 중지", value=False)
-    # if stop_app: st.stop()
+    # 필요한 경우 사이드바에 추가적인 설정을 넣을 수 있습니다.
 
 st.title("🏢 사업자 등록 상태 일괄 조회")
 check_license()
 st.divider()
 
-uploaded_file = st.file_uploader("사업자번호 TXT 파일을 업로드하세요.", type=["txt"])
+uploaded_file = st.file_uploader("사업자번호 TXT 파일을 업로드하세요. (메모장 파일 지원)", type=["txt"])
 
 if uploaded_file:
-    content = uploaded_file.read().decode("utf-8")
+    # --- [기능] 인코딩 무적 대응 로직 ---
+    raw_data = uploaded_file.read()
+    try:
+        # 1. UTF-8 (BOM 제거 포함) 시도
+        content = raw_data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        # 2. 실패 시 구형 윈도우 인코딩(CP949) 시도
+        content = raw_data.decode("cp949")
+
+    # 사업자 번호 추출
     biz_nums = [line.strip().replace("-", "") for line in content.splitlines() if line.strip()]
     total_count = len(biz_nums)
     st.metric(label="총 업로드 건수", value=f"{total_count} 건")
@@ -105,7 +123,7 @@ if uploaded_file:
                 df.index.name = '번호'
                 st.dataframe(df, use_container_width=True)
                 
-                # --- [엑셀 파일 생성 및 서식 지정] ---
+                # --- [기능] 엑셀 스타일링 (테두리 및 너비) ---
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     df.to_excel(writer, index=True, sheet_name='조회결과')
@@ -113,23 +131,25 @@ if uploaded_file:
                     workbook  = writer.book
                     worksheet = writer.sheets['조회결과']
                     
-                    # 1. 모든 셀에 테두리를 적용할 포맷 생성
+                    # 모든 셀에 적용할 테두리 포맷
                     border_format = workbook.add_format({
-                        'border': 1,       # 테두리 두께
-                        'align': 'left',   # 정렬
+                        'border': 1,       # 모든 면 테두리
+                        'align': 'left',
                         'valign': 'vcenter'
                     })
                     
-                    # 2. 열 너비 자동 조절 및 테두리 적용
-                    # Index(번호) 포함 모든 열에 대해 루프
-                    for i, col in enumerate(df.columns):
-                        # 열 이름의 길이나 데이터 중 가장 긴 길이를 계산
-                        column_len = max(df[col].astype(str).map(len).max(), len(col)) + 5
-                        # 데이터 영역에 테두리 적용 (set_column 사용)
-                        worksheet.set_column(i + 1, i + 1, column_len, border_format)
-                    
-                    # 인덱스(A열) 처리
+                    # 열 너비 자동 조절 및 테두리 입히기
+                    # 인덱스 열 (A열)
                     worksheet.set_column(0, 0, 10, border_format)
+                    
+                    # 데이터 열들 (B열부터)
+                    for i, col in enumerate(df.columns):
+                        # 데이터 값들 중 최대 길이 계산
+                        max_len = max(
+                            df[col].astype(str).map(len).max(), # 데이터 내용 중 최대값
+                            len(str(col))                      # 헤더 이름 길이
+                        ) + 5 # 여유 공간
+                        worksheet.set_column(i + 1, i + 1, max_len, border_format)
                 
                 processed_data = output.getvalue()
                 
