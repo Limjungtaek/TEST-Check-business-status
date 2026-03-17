@@ -19,7 +19,7 @@ if APP_DISABLED:
     st.stop()
 
 st.set_page_config(
-    page_title="사업자 등록 상태 조회 시스템 v2.0",
+    page_title="사업자 등록 상태 조회 시스템 v2.1",
     page_icon="🏢", 
     layout="wide"
 )
@@ -69,9 +69,10 @@ def check_biz_status(biz_nums):
     HEADERS = {"Content-Type": "application/json"}
     
     all_results = []
-    progress_text = "조회 중입니다. 잠시만 기다려 주세요."
+    progress_text = "국세청 데이터를 조회 중입니다..."
     my_bar = st.progress(0, text=progress_text)
     
+    # API 제약상 100개씩 끊어서 요청
     for i in range(0, len(biz_nums), 100):
         chunk = biz_nums[i:i+100]
         payload = {"b_no": chunk}
@@ -95,7 +96,7 @@ def check_biz_status(biz_nums):
 # 2. 메인 UI 화면
 # ==========================================
 
-# 사이드바 개선
+# 사이드바
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/city-buildings.png", width=80)
     st.title("Business Checker")
@@ -107,89 +108,105 @@ with st.sidebar:
 st.title("🏢 사업자 등록 상태 일괄 조회 시스템")
 check_license()
 
-# 이용 안내를 Expander로 묶어 화면을 깔끔하게 유지
-with st.expander("📌 이용 방법 및 파일 예시 (처음이시라면 클릭하세요)", expanded=False):
+# 이용 안내
+with st.expander("📌 이용 방법 및 파일 예시", expanded=False):
     guide_col1, guide_col2 = st.columns([2, 1])
     with guide_col1:
         st.markdown("""
-        1. **사업자 등록 번호**가 한 줄에 하나씩 적힌 **TXT 파일**을 준비합니다.
-        2. 번호 사이의 하이픈(`-`)은 시스템이 자동으로 제거합니다.
-        3. 아래 **업로드 섹션**에 파일을 드래그 앤 드롭 하세요.
-        4. **일괄 조회 시작** 버튼을 누르면 실시간 결과가 출력됩니다.
+        1. **TXT** 혹은 **Excel(xlsx, xlsm)** 파일을 준비합니다.
+        2. **TXT**: 한 줄에 번호 하나씩 입력하세요.
+        3. **Excel**: 첫 번째 열에 번호를 입력하세요 (제목 행이 있어도 숫자가 아니면 자동 제외됩니다).
+        4. 하이픈(`-`)과 띄어쓰기는 시스템이 자동으로 제거합니다.
         """)
     with guide_col2:
         image_path = os.path.join("images", "example.png") 
         if os.path.exists(image_path):
             img = Image.open(image_path)
             resized_img = img.resize((250, 180), Image.Resampling.LANCZOS)
-            st.image(resized_img, caption="권장 TXT 형식 예시", width=250)
+            st.image(resized_img, caption="파일 형식 예시", width=250)
 
 st.markdown("---")
 
-# 업로드 섹션 디자인
-main_container = st.container()
-with main_container:
-    col_up1, col_up2 = st.columns([2, 1])
-    with col_up1:
-        uploaded_file = st.file_uploader("사업자번호 TXT 파일을 업로드하세요", type=["txt"], help="메모장에서 작성한 .txt 파일만 지원합니다.")
-    with col_up2:
-        if uploaded_file:
+# 파일 처리 로직
+uploaded_file = st.file_uploader("파일을 업로드하세요 (TXT, XLSX, XLSM)", type=["txt", "xlsx", "xlsm"])
+
+biz_nums = []
+if uploaded_file:
+    file_ext = uploaded_file.name.split('.')[-1].lower()
+    
+    try:
+        # 1. 엑셀 파일 처리
+        if file_ext in ["xlsx", "xlsm"]:
+            df_in = pd.read_excel(uploaded_file, header=None)
+            # 첫 번째 열(0번 인덱스) 데이터만 추출
+            raw_list = df_in.iloc[:, 0].dropna().astype(str).tolist()
+        
+        # 2. TXT 파일 처리
+        else:
             raw_data = uploaded_file.read()
             try:
                 content = raw_data.decode("utf-8-sig")
             except UnicodeDecodeError:
                 content = raw_data.decode("cp949")
-            
-            biz_nums = [line.strip().replace("-", "") for line in content.splitlines() if line.strip()]
-            st.metric("업로드된 번호", f"{len(biz_nums)} 건")
+            raw_list = content.splitlines()
 
-# 조회 실행 버튼 및 결과
-if uploaded_file and st.button(f"🚀 {len(biz_nums)}건 국세청 실시간 조회 시작"):
+        # [핵심] 하이픈 및 띄어쓰기 제거 로직
+        for item in raw_list:
+            clean_num = item.replace("-", "").replace(" ", "").strip()
+            # 숫자로만 이루어진 10자리 내외의 번호인 경우만 리스트에 추가 (제목행 제외용)
+            if clean_num.isdigit() and len(clean_num) >= 10:
+                biz_nums.append(clean_num)
+        
+        if biz_nums:
+            st.success(f"✅ 총 {len(biz_nums)}개의 사업자 번호를 인식했습니다.")
+        else:
+            st.warning("인식된 사업자 번호가 없습니다. 파일 내용을 확인해주세요.")
+
+    except Exception as e:
+        st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
+
+# 조회 실행 버튼 및 결과 출력
+if biz_nums and st.button(f"🚀 {len(biz_nums)}건 국세청 실시간 조회 시작"):
     results = check_biz_status(biz_nums)
     abnormal = []
     normal_count = 0
     
     for item in results:
+        # 상태가 '계속사업자'인 경우만 정상으로 카운트
         if item.get("b_stt") == "계속사업자":
             normal_count += 1
         else:
             abnormal.append({
                 "사업자번호": item.get('b_no'),
-                "상태": item.get('b_stt') if item.get('b_stt') else "조회불가",
+                "상태": item.get('b_stt') if item.get('b_stt') else "조회불가(번호오류)",
+                "상세내용": item.get('tax_type', '-'),
                 "폐업일자": item.get('end_dt') if item.get('end_dt') else "-"
             })
 
     # 결과 대시보드
     st.subheader("📊 조회 결과 리포트")
     res_col1, res_col2, res_col3 = st.columns(3)
-    res_col1.metric("전체 조회", f"{len(results)}건", delta_color="off")
+    res_col1.metric("전체 조회", f"{len(results)}건")
     res_col2.metric("정상 사업자", f"{normal_count}건")
     res_col3.metric("주의/폐업", f"{len(abnormal)}건", delta=f"-{len(abnormal)}" if len(abnormal)>0 else None, delta_color="inverse")
 
     if len(abnormal) > 0:
-        st.error(f"⚠️ 확인이 필요한 사업자가 {len(abnormal)}건 있습니다. 아래 명단을 확인하세요.")
-        df = pd.DataFrame(abnormal)
-        df.index = df.index + 1
-        st.dataframe(df, use_container_width=True)
+        st.error(f"⚠️ 확인이 필요한 사업자가 {len(abnormal)}건 있습니다.")
+        df_res = pd.DataFrame(abnormal)
+        df_res.index = df_res.index + 1
+        st.dataframe(df_res, use_container_width=True)
         
-        # 엑셀 생성 로직 (동일)
+        # 엑셀 다운로드 파일 생성
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=True, sheet_name='조회결과')
-            workbook = writer.book
-            worksheet = writer.sheets['조회결과']
-            border_format = workbook.add_format({'border': 1, 'align': 'left', 'valign': 'vcenter'})
-            worksheet.set_column(0, 0, 10, border_format)
-            for i, col in enumerate(df.columns):
-                max_len = max(df[col].astype(str).map(len).max(), len(str(col))) + 5
-                worksheet.set_column(i + 1, i + 1, max_len, border_format)
+            df_res.to_excel(writer, index=True, sheet_name='Result')
         
         st.download_button(
-            label="📥 결과 리스트 다운로드 (Excel)",
+            label="📥 주의 대상 리스트 다운로드 (Excel)",
             data=output.getvalue(),
-            file_name=f"biz_check_result_{datetime.date.today()}.xlsx",
+            file_name=f"biz_check_{datetime.date.today()}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
         st.balloons()
-        st.success("✨ 모든 사업자가 정상 상태(계속사업자)인 것으로 확인되었습니다!")
+        st.success("✨ 모든 사업자가 정상 상태(계속사업자)입니다!")
