@@ -6,10 +6,10 @@ import datetime
 import pandas as pd
 from io import BytesIO
 import os
-from PIL import Image  # 이미지 처리를 위해 추가
+from PIL import Image
 
 # ==========================================
-# 1. 앱 관리 및 시스템 설정
+# 1. 시스템 설정 및 커스텀 스타일
 # ==========================================
 
 APP_DISABLED = False 
@@ -19,10 +19,38 @@ if APP_DISABLED:
     st.stop()
 
 st.set_page_config(
-    page_title="사업자 등록 상태 조회 시스템",
+    page_title="사업자 등록 상태 조회 시스템 v2.0",
     page_icon="🏢", 
     layout="wide"
 )
+
+# 전문가 스타일을 위한 CSS 주입
+st.markdown("""
+    <style>
+    .main {
+        background-color: #f8f9fa;
+    }
+    .stButton>button {
+        width: 100%;
+        border-radius: 5px;
+        height: 3em;
+        background-color: #007bff;
+        color: white;
+        font-weight: bold;
+        transition: 0.3s;
+    }
+    .stButton>button:hover {
+        background-color: #0056b3;
+        border: none;
+    }
+    .stMetric {
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 EXPIRY_DATE = datetime.date(2026, 12, 31)
 SERVICE_KEY = st.secrets.get("SERVICE_KEY")
@@ -34,14 +62,15 @@ def check_license():
 
 def check_biz_status(biz_nums):
     if not SERVICE_KEY:
-        st.error("API 서비스 키가 설정되어 있지 않습니다. Secrets 설정을 확인하세요.")
+        st.error("API 서비스 키가 설정되어 있지 않습니다.")
         st.stop()
         
     API_URL = f"https://api.odcloud.kr/api/nts-businessman/v1/status?serviceKey={SERVICE_KEY}"
     HEADERS = {"Content-Type": "application/json"}
     
     all_results = []
-    progress_bar = st.progress(0)
+    progress_text = "조회 중입니다. 잠시만 기다려 주세요."
+    my_bar = st.progress(0, text=progress_text)
     
     for i in range(0, len(biz_nums), 100):
         chunk = biz_nums[i:i+100]
@@ -54,112 +83,113 @@ def check_biz_status(biz_nums):
         except Exception as e:
             st.error(f"조회 중 오류 발생: {e}")
             break
-        progress = min((i + 100) / len(biz_nums), 1.0)
-        progress_bar.progress(progress)
-        time.sleep(0.2)
+        percent = min((i + 100) / len(biz_nums), 1.0)
+        my_bar.progress(percent, text=f"진행율: {int(percent*100)}% ({len(all_results)}건 완료)")
+        time.sleep(0.1)
+    
+    time.sleep(0.5)
+    my_bar.empty()
     return all_results
 
 # ==========================================
 # 2. 메인 UI 화면
 # ==========================================
 
+# 사이드바 개선
 with st.sidebar:
-    st.header("⚙️ 서비스 정보")
-    st.info(f"📅 만료 예정일: {EXPIRY_DATE}")
+    st.image("https://img.icons8.com/fluency/96/city-buildings.png", width=80)
+    st.title("Business Checker")
+    st.markdown("---")
+    st.info(f"**상태:** 운영 중\n\n**만료일:** {EXPIRY_DATE}")
+    st.caption("© 2026 Lim Jung-taek. All rights reserved.")
 
-st.title("🏢 사업자 등록 상태 일괄 조회")
+# 헤더 섹션
+st.title("🏢 사업자 등록 상태 일괄 조회 시스템")
 check_license()
-st.divider()
 
-st.subheader("📋 이용 방법 및 파일 예시")
-col1, col2 = st.columns([2, 1]) # 안내 문구를 더 넓게 배치
+# 이용 안내를 Expander로 묶어 화면을 깔끔하게 유지
+with st.expander("📌 이용 방법 및 파일 예시 (처음이시라면 클릭하세요)", expanded=False):
+    guide_col1, guide_col2 = st.columns([2, 1])
+    with guide_col1:
+        st.markdown("""
+        1. **사업자 등록 번호**가 한 줄에 하나씩 적힌 **TXT 파일**을 준비합니다.
+        2. 번호 사이의 하이픈(`-`)은 시스템이 자동으로 제거합니다.
+        3. 아래 **업로드 섹션**에 파일을 드래그 앤 드롭 하세요.
+        4. **일괄 조회 시작** 버튼을 누르면 실시간 결과가 출력됩니다.
+        """)
+    with guide_col2:
+        image_path = os.path.join("images", "example.png") 
+        if os.path.exists(image_path):
+            img = Image.open(image_path)
+            resized_img = img.resize((250, 180), Image.Resampling.LANCZOS)
+            st.image(resized_img, caption="권장 TXT 형식 예시", width=250)
 
-with col1:
-    st.markdown("""
-    1. **사업자 등록 번호**가 한 줄에 하나씩 적힌 **TXT 파일**을 준비합니다.
-    2. 번호 사이의 하이픈(`-`)은 자동으로 제거되니 안심하세요.
-    3. 아래의 **파일 업로드** 섹션에 파일을 업로드합니다.
-    4. **조회 시작** 버튼을 누르면 실시간 국세청 조회가 시작됩니다.
-    """)
+st.markdown("---")
 
-with col2:
-    image_path = os.path.join("images", "example.png") 
-    
-    if os.path.exists(image_path):
-        # --- [보정 로직 추가] ---
-        img = Image.open(image_path)
-        
-        # 고품질 리사이징 (LANCZOS 필터 사용으로 깨짐 방지)
-        # 250x200으로 강제 조정하되 비율이 깨질 수 있으므로 수동 지정
-        resized_img = img.resize((250, 200), Image.Resampling.LANCZOS)
-        
-        # 캡션과 함께 출력 (width를 다시 한번 고정)
-        st.image(resized_img, caption="업로드용 메모장 예시", width=250)
-    else:
-        st.info("💡 Tip: 'images' 폴더에 'example.png' 파일을 넣어주세요.")
-
-st.divider()
-
-uploaded_file = st.file_uploader("사업자번호 TXT 파일을 업로드하세요.", type=["txt"])
-
-if uploaded_file:
-    raw_data = uploaded_file.read()
-    try:
-        content = raw_data.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        content = raw_data.decode("cp949")
-
-    biz_nums = [line.strip().replace("-", "") for line in content.splitlines() if line.strip()]
-    total_count = len(biz_nums)
-    st.metric(label="총 업로드 건수", value=f"{total_count} 건")
-    
-    if st.button(f"🚀 {total_count}건 일괄 조회 시작"):
-        with st.spinner("국세청 데이터를 가져오는 중..."):
-            results = check_biz_status(biz_nums)
-            abnormal = []
-            normal_count = 0
+# 업로드 섹션 디자인
+main_container = st.container()
+with main_container:
+    col_up1, col_up2 = st.columns([2, 1])
+    with col_up1:
+        uploaded_file = st.file_uploader("사업자번호 TXT 파일을 업로드하세요", type=["txt"], help="메모장에서 작성한 .txt 파일만 지원합니다.")
+    with col_up2:
+        if uploaded_file:
+            raw_data = uploaded_file.read()
+            try:
+                content = raw_data.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                content = raw_data.decode("cp949")
             
-            for item in results:
-                if item.get("b_stt") == "계속사업자":
-                    normal_count += 1
-                else:
-                    abnormal.append({
-                        "사업자번호": item.get('b_no'),
-                        "상태": item.get('b_stt') if item.get('b_stt') else "조회불가",
-                        "폐업일자": item.get('end_dt') if item.get('end_dt') else "-"
-                    })
+            biz_nums = [line.strip().replace("-", "") for line in content.splitlines() if line.strip()]
+            st.metric("업로드된 번호", f"{len(biz_nums)} 건")
 
-            st.divider()
-            res_col1, res_col2, res_col3 = st.columns(3)
-            res_col1.metric("조회 완료", f"{len(results)}건")
-            res_col2.metric("정상(계속)", f"{normal_count}건")
-            res_col3.metric("휴/폐업 등", f"{len(abnormal)}건")
+# 조회 실행 버튼 및 결과
+if uploaded_file and st.button(f"🚀 {len(biz_nums)}건 국세청 실시간 조회 시작"):
+    results = check_biz_status(biz_nums)
+    abnormal = []
+    normal_count = 0
+    
+    for item in results:
+        if item.get("b_stt") == "계속사업자":
+            normal_count += 1
+        else:
+            abnormal.append({
+                "사업자번호": item.get('b_no'),
+                "상태": item.get('b_stt') if item.get('b_stt') else "조회불가",
+                "폐업일자": item.get('end_dt') if item.get('end_dt') else "-"
+            })
 
-            if len(abnormal) > 0:
-                st.warning(f"⚠️ 확인이 필요한 사업자가 {len(abnormal)}건 발견되었습니다.")
-                df = pd.DataFrame(abnormal)
-                df.index = df.index + 1
-                df.index.name = '번호'
-                st.dataframe(df, use_container_width=True)
-                
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=True, sheet_name='조회결과')
-                    workbook  = writer.book
-                    worksheet = writer.sheets['조회결과']
-                    border_format = workbook.add_format({'border': 1, 'align': 'left', 'valign': 'vcenter'})
-                    worksheet.set_column(0, 0, 10, border_format)
-                    for i, col in enumerate(df.columns):
-                        max_len = max(df[col].astype(str).map(len).max(), len(str(col))) + 5
-                        worksheet.set_column(i + 1, i + 1, max_len, border_format)
-                
-                processed_data = output.getvalue()
-                st.download_button(
-                    label="📥 비정상 사업자 리스트 다운로드 (Excel)",
-                    data=processed_data,
-                    file_name=f"biz_result_{datetime.date.today()}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            else:
-                st.balloons()
-                st.success("✅ 모든 사업자가 '계속사업자' 상태입니다!")
+    # 결과 대시보드
+    st.subheader("📊 조회 결과 리포트")
+    res_col1, res_col2, res_col3 = st.columns(3)
+    res_col1.metric("전체 조회", f"{len(results)}건", delta_color="off")
+    res_col2.metric("정상 사업자", f"{normal_count}건")
+    res_col3.metric("주의/폐업", f"{len(abnormal)}건", delta=f"-{len(abnormal)}" if len(abnormal)>0 else None, delta_color="inverse")
+
+    if len(abnormal) > 0:
+        st.error(f"⚠️ 확인이 필요한 사업자가 {len(abnormal)}건 있습니다. 아래 명단을 확인하세요.")
+        df = pd.DataFrame(abnormal)
+        df.index = df.index + 1
+        st.dataframe(df, use_container_width=True)
+        
+        # 엑셀 생성 로직 (동일)
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=True, sheet_name='조회결과')
+            workbook = writer.book
+            worksheet = writer.sheets['조회결과']
+            border_format = workbook.add_format({'border': 1, 'align': 'left', 'valign': 'vcenter'})
+            worksheet.set_column(0, 0, 10, border_format)
+            for i, col in enumerate(df.columns):
+                max_len = max(df[col].astype(str).map(len).max(), len(str(col))) + 5
+                worksheet.set_column(i + 1, i + 1, max_len, border_format)
+        
+        st.download_button(
+            label="📥 결과 리스트 다운로드 (Excel)",
+            data=output.getvalue(),
+            file_name=f"biz_check_result_{datetime.date.today()}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        st.balloons()
+        st.success("✨ 모든 사업자가 정상 상태(계속사업자)인 것으로 확인되었습니다!")
