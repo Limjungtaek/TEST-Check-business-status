@@ -6,39 +6,33 @@ import datetime
 import pandas as pd
 from io import BytesIO
 import os
+from PIL import Image  # 이미지 처리를 위해 추가
 
 # ==========================================
 # 1. 앱 관리 및 시스템 설정
 # ==========================================
 
-# [기능] 앱 전체 중지 스위치 (True로 변경 시 앱 작동 중지)
 APP_DISABLED = False 
 
 if APP_DISABLED:
     st.error("🚫 현재 시스템 점검 중으로 서비스를 일시 중단합니다.")
     st.stop()
 
-# [기능] 브라우저 탭 이름 및 레이아웃 설정
 st.set_page_config(
     page_title="사업자 등록 상태 조회 시스템",
     page_icon="🏢", 
     layout="wide"
 )
 
-# --- [설정 1: 만료 날짜] ---
 EXPIRY_DATE = datetime.date(2026, 12, 31)
-
-# --- [설정 2: API 정보 및 보안] ---
 SERVICE_KEY = st.secrets.get("SERVICE_KEY")
 
 def check_license():
-    """날짜 만료 체크 함수"""
     if datetime.date.today() > EXPIRY_DATE:
         st.error(f"🛑 서비스 이용 기간이 만료되었습니다. (만료일: {EXPIRY_DATE})")
         st.stop()
 
 def check_biz_status(biz_nums):
-    """국세청 API 호출 로직"""
     if not SERVICE_KEY:
         st.error("API 서비스 키가 설정되어 있지 않습니다. Secrets 설정을 확인하세요.")
         st.stop()
@@ -77,9 +71,8 @@ st.title("🏢 사업자 등록 상태 일괄 조회")
 check_license()
 st.divider()
 
-# --- [안내 섹션] 이용 방법 및 파일 예시 ---
 st.subheader("📋 이용 방법 및 파일 예시")
-col1, col2 = st.columns([1, 1.2]) 
+col1, col2 = st.columns([2, 1]) # 안내 문구를 더 넓게 배치
 
 with col1:
     st.markdown("""
@@ -90,18 +83,23 @@ with col1:
     """)
 
 with col2:
-    # 💡 수정된 경로: images 폴더 안의 example.png를 참조합니다.
     image_path = os.path.join("images", "example.png") 
     
     if os.path.exists(image_path):
-        st.image(image_path, caption="업로드용 메모장(.txt) 예시 파일", use_container_width=True)
+        # --- [보정 로직 추가] ---
+        img = Image.open(image_path)
+        
+        # 고품질 리사이징 (LANCZOS 필터 사용으로 깨짐 방지)
+        # 250x200으로 강제 조정하되 비율이 깨질 수 있으므로 수동 지정
+        resized_img = img.resize((250, 200), Image.Resampling.LANCZOS)
+        
+        # 캡션과 함께 출력 (width를 다시 한번 고정)
+        st.image(resized_img, caption="업로드용 메모장 예시", width=250)
     else:
-        # 이미지가 없을 경우 사용자에게 폴더 구조 가이드를 보여줌
-        st.info("💡 Tip: 'images' 폴더에 'example.png' 파일을 넣으면 여기에 예시 사진이 나타납니다.")
+        st.info("💡 Tip: 'images' 폴더에 'example.png' 파일을 넣어주세요.")
 
 st.divider()
 
-# 파일 업로더
 uploaded_file = st.file_uploader("사업자번호 TXT 파일을 업로드하세요.", type=["txt"])
 
 if uploaded_file:
@@ -144,7 +142,6 @@ if uploaded_file:
                 df.index.name = '번호'
                 st.dataframe(df, use_container_width=True)
                 
-                # 엑셀 다운로드 파일 생성
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     df.to_excel(writer, index=True, sheet_name='조회결과')
